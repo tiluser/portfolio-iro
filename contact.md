@@ -14,7 +14,7 @@ Please contact me.
 <form action="https://getsimpleform.com/messages?form_api_token=6fac61d7ff56192e75c75ce866e65960" method="post">
   <!-- the redirect_to is optional, the form will redirect to the referrer on submission -->
   <!-- <input type='hidden' name='redirect_to' value='http://tiluser.github.io/thank-you/' />-->
-  <input type='hidden' name='redirect_to' value='http://localhost:4000/thank-you/' />
+  <input type='hidden' name='redirect_to' value='http://jmoshowcase.info/portfolio-iro/thank-you/' />
   <p>
     <input type='text' name='name' placeholder="Name..." /><br />
   </p>
