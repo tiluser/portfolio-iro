@@ -3,7 +3,7 @@ layout: post
 title: Creole Forth for JavaScript, Part 2 
 ---
 
-My previous post last week introduced Creole Forth for JavaScript. As of today I'm pleased to report significant progress. It has close to 70 words and is close
+My previous post last week introduced Creole Forth for JavaScript as a new project. As of today I'm pleased to report significant progress. It has close to 70 words and is close
 to its companion languages in out-of-the-box functionality. Below is a list of features that were implemented this week.
 <ol>
 <li>Colon compiler</li>
