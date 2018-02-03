@@ -1,44 +1,9 @@
-// Set this global variable to DEVELOPMENT in your web page to get the stack
-// underflow checking to work correctly. It comes at the expense of overriding
-// the Array.prototype.pop() method, so you can remove it when you're sure there
-// are no stack-based errors and you may have to interact with other libraries. 
-
-if (creoleForthCodeBase === undefined) {
-    var creoleodeBase = "PRODUCTION";
-}
-
 Function.prototype.method = function (name, func) {
     if (!this.prototype[name]) {
         this.prototype[name] = func;
         return this;
     }
 };
-
-
-var originalPop = Array.prototype.pop;
-var GlobalErrors = function () {
-    "use strict";
-
-    if (!(this instanceof BasicForthConstants)) {
-        throw new Error("BasicForthConstants needs to be called with the new keyword");
-    }
-
-    this.StackUnderFlowFlag = false;  
-};
-
-var globalErrors = Object.create(GlobalErrors);
-if (creoleForthCodeBase === "DEVELOPMENT") {
-    Array.prototype.pop = function() {
-        var popVal = originalPop.apply(this, arguments);
-        if ((this.length === 0) && (popVal === "")) {
-            globalErrors.StackUnderFlowFlag = true;
-            alert("Error: Stack underflow");
-        }
-        else {
-            return popVal;
-        }
-    };
-}
 
 Number.method('integer', function () {
     return Math[this < 0 ? 'ceil' : 'floor'](this);
@@ -56,11 +21,8 @@ var BasicForthConstants = function () {
     }
     this.SmudgeFlag = "SMUDGED";
     this.ImmediateVocab = "IMMEDIATE";
-    this.BranchloopVocab = "BRANCHLOOP";
     this.PrefilterVocab = "PREFILTER";
     this.PostfilterVocab = "POSTFILTER";
-    this.EndOfSingleLineComment = "\n";
-    this.EndOfMultilineComment = ")";
     this.ExecZeroAction = "EXEC0";
     this.CompLitAction = "COMPLIT";
 };
@@ -79,9 +41,10 @@ var GlobalSimpleProps = function (cfb) {
     this.PostfilterStack = [];
     this.PADarea = [];
     this.ParsedInput = [];
-    this.LoopName = [];
-    this.LoopIndex = [];
-    this.LoopEnd = [];
+    this.loopLabels = ["I", "J", "K"];
+    this.LoopLabelPtr = 0;
+    this.LoopCurrIndexes = [0, 0, 0];
+    this.IndexI;
     this.OuterPtr = 0;
     this.InnerPtr = 0;
     this.ParamFieldPtr = 0;
@@ -91,6 +54,7 @@ var GlobalSimpleProps = function (cfb) {
     this.HelpCommentField = "";
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
+    this.MinArgsSwitch = true;   // When true MinArgs is checked
 };
 
 GlobalSimpleProps.method("cleanFields", function () {
@@ -98,9 +62,8 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.ReturnStack = [];
     this.PADarea = [];
     this.ParsedInput = [];
-    this.LoopName = [];
-    this.LoopIndex = [];
-    this.LoopEnd = [];
+    this.LoopLabelPtr = 0;
+    this.LoopCurrIndexes = [0, 0, 0];
     this.OuterPtr = 0;
     this.InnerPtr = 0;
     this.ParamFieldPtr = 0;
@@ -111,35 +74,19 @@ GlobalSimpleProps.method("cleanFields", function () {
 });
 
 
-GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) {  
-    
-    if (minSize === 1) {
-      //  minSize += 1;
+GlobalSimpleProps.method('hasMinArgs', function (stack, minSize) { 
+    var i;
+    if (this.MinArgsSwitch === false) {
+        return;
     }
-    if (stack.length < minSize) {
-        alert("Error: Stack underflow");
-        this.cleanFields();
-        //throw new Error("Insufficient number of stack arguments");
-        return false;
-    } 
-    else {
-        return true;
-    }
-});
-
-GlobalSimpleProps.method('cfPop', function (arr) {
-    
-    originalPop.apply(this, arguments);
-    var popVal = arr[0];
-    if ((arr.length === 1) && (popVal === "")) {
-        this.cleanFields();
-        alert("Error: Stack underflow");
-        // throw new Error("Insufficient number of stack arguments");       
-    }
-    else { 
-        return arr.pop();
-    }
-    
+    for (i = stack.length - 1; i >= 0; i--) {
+        if (stack[i] == "" || stack.length < minSize) {
+            alert("Error: Stack underflow");
+            this.cleanFields();
+            return false;
+        }
+    }   
+    return true;
 });
 
 // These objects are to be stored on the return stack
@@ -151,6 +98,16 @@ var ReturnLoc = function (dictAddr, pfAddr) {
     this.DictAddr = dictAddr;
     this.ParamFieldAddr = pfAddr;
 };
+
+var LoopInfo = function(label, index, limit) {
+    "use strict";
+    if (!(this instanceof LoopInfo)) {
+        throw new Error("LoopInfo needs to be called with the new keyword");
+    }
+    this.Label = label;
+    this.Index = index;
+    this.Limit = limit;
+}
 
 // Colon definitions are built in the PAD area - each new entry is a triplet consisting of the
 // word's fully qualified name, its dictionary address, and associated compilation action. 
@@ -184,7 +141,6 @@ CorePrims.method("doPlus", function (gsp) {
     if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
         return;
     }    
-
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop();
     var sum = Number(val1) + Number(val2);
@@ -237,7 +193,7 @@ CorePrims.method("doDup", function (gsp) {
     }
     var val = gsp.DataStack.pop();
     gsp.DataStack.push(val);
-    gsp.DataStack.push(val);    
+    gsp.DataStack.push(val); 
 });
 
 CorePrims.method("doSwap", function (gsp) {
@@ -252,6 +208,10 @@ CorePrims.method("doSwap", function (gsp) {
 
 // ( n1 n2 n3 -- n2 n3 n1 ) Rotates the third value to the top of the stack
 CorePrims.method("doRot", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 3) === false) { 
+        return;
+    }
+
     var val3 = gsp.DataStack.pop();
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop();
@@ -263,16 +223,14 @@ CorePrims.method("doRot", function (gsp) {
 
 // ( n1 n2 n3 -- n3 n1 n2 )  Rotates top value of the stack to the third position 
 CorePrims.method("doMinusRot", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 3) === false) { 
+        return;
+    }
+
     var val3 = gsp.DataStack.pop();
     var val2 = gsp.DataStack.pop();
     var val1 = gsp.DataStack.pop(); 
- 
-    if (globalErrors.StackUnderFlowFlag === true) {
-        gsp.cleanFields();
-        globalErrors.StackUnderFlowFlag = false;
-        return;
-    }
- 
+  
     gsp.DataStack.push(val3);    
     gsp.DataStack.push(val1);
     gsp.DataStack.push(val2);
@@ -280,7 +238,7 @@ CorePrims.method("doMinusRot", function (gsp) {
 });
 
 CorePrims.method("doNip", function (gsp) {
-    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+    if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
         return;
     }
     var val1 = gsp.DataStack.pop();
@@ -311,10 +269,16 @@ CorePrims.method("doOver", function (gsp) {
 });
 
 CorePrims.method("doDrop", function (gsp) {
+    var beforeArgCount = gsp.DataStack.length;
     if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
         return;
     }
     gsp.DataStack.pop();
+    var afterArgCount = gsp.DataStack.length;
+    if (beforeArgCount === afterArgCount) {
+        alert("Error: stack underflow");
+        gsp.cleanFields();
+    }
 });
 
 CorePrims.method("doDepth", function (gsp) {
@@ -348,10 +312,11 @@ CorePrims.method("doVList", function (gsp) {
     var definitionTable = [];
     var i;
     var cw;
+    var dtString;
     
-    definitionTable[0] = "<table>";
+    definitionTable[0] = gsp.CreoleForthBundle.row + 1 + " definitions<br><table>";
     definitionTable.push("<th>Index</th><th>Name</th><th>Vocabulary</th><th>Help Field</th>");
-    for (i = 0; i < gsp.CreoleForthBundle.row; i++) {
+    for (i = 0; i <= gsp.CreoleForthBundle.row; i++) {
         cw = gsp.CreoleForthBundle.Address[i];
         if (cw != null) {
             definitionTable.push("<tr>" + 
@@ -365,7 +330,6 @@ CorePrims.method("doVList", function (gsp) {
     definitionTable.push("</table>");  
     dtString = definitionTable.join("\n");
     gsp.HelpCommentField = dtString;
-    // alert(dtString);
 });
 
 CorePrims.method("doToday", function (gsp) { 
@@ -435,10 +399,6 @@ Interpreter.method("doParseInput", function (gsp) {
 
 Interpreter.method("doInner", function (gsp) {
     gsp.CreoleForthBundle.Address[gsp.InnerPtr].CodeField(gsp);
-    if (globalErrors.StackUnderFlowFlag === true) {
-        gsp.cleanFields();
-        globalErrors.StackUnderFlowFlag = false;     
-    } 
 });
 
 Interpreter.method("doColon", function(gsp) {
@@ -502,10 +462,16 @@ Interpreter.method("doOuter", function (gsp) {
                 searchVocabPtr -= 1;
             }
         }
+        // Have to assign stack parameters this way to account for the way JavaScript initializes arrays
         if (isFound === false) {
-            gsp.DataStack.push(rawWord);
+            if (gsp.DataStack.length === 1 && gsp.DataStack[0] == "") {
+                gsp.DataStack[0] = rawWord;
+            }
+            else {
+                gsp.DataStack.push(rawWord);
+            }
         }
-        gsp.OuterPtr += 1;   
+        gsp.OuterPtr += 1;  
         isFound = false;
     }  
 });
@@ -555,7 +521,6 @@ Compiler.method("doCompileList", function (gsp) {
     }
     
     joinedList = gsp.CompiledList.join(" ");
-    console.log(joinedList)
     gsp.DataStack.push(joinedList);
 });
 
@@ -596,10 +561,8 @@ Compiler.method("doCreate", function (gsp) {
     gsp.OuterPtr += 2;   
 });
 
-
-
 Compiler.method("CompileColon", function (gsp) {
-    var hereLoc = gsp.CreoleForthBundle.row + 1;
+    var hereLoc = gsp.CreoleForthBundle.row + 1 ;
     var name = gsp.ParsedInput[gsp.OuterPtr + 1];
     var params = [];
     var data = [];
@@ -803,11 +766,155 @@ Compiler.method("CompileUntil", function (gsp) {
     newCreoleWord.ParamField.push(beginLoc);   
 });
 
+Compiler.method("CompileDo", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var doStartDoAddr = gsp.CreoleForthBundle["doStartDo.IMMEDIATE"].IndexField;
+    var doAddr = gsp.CreoleForthBundle["doDo.IMMEDIATE"].IndexField;
+    var doLoc;
+    newCreoleWord.ParamField.push(doStartDoAddr);
+    newCreoleWord.ParamField.push(doAddr);
+    doLoc = newCreoleWord.ParamField.length - 1;
+    gsp.DataStack.push(doLoc);
+});
+
+Compiler.method("CompileLoop", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }       
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var loopAddr = gsp.CreoleForthBundle["doLoop.IMMEDIATE"].IndexField;
+    var doLoc = gsp.DataStack.pop();
+    newCreoleWord.ParamField.push(loopAddr);
+    newCreoleWord.ParamField.push(doLoc);
+});
+
+Compiler.method("CompilePlusLoop", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }       
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var loopAddr = gsp.CreoleForthBundle["doPlusLoop.IMMEDIATE"].IndexField;
+    var doLoc = gsp.DataStack.pop();
+    newCreoleWord.ParamField.push(loopAddr);
+    newCreoleWord.ParamField.push(doLoc);
+});
+
+Compiler.method("doStartDo", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 2) === false) { 
+        return;
+    } 
+    var rLoc = gsp.ReturnStack.pop();
+    var startIndex = gsp.DataStack.pop();
+    var loopEnd = gsp.DataStack.pop();  
+    var li = new LoopInfo(gsp.loopLabels[gsp.LoopLabelPtr], startIndex, loopEnd);
+    gsp.LoopCurrIndexes = [0, 0, 0];
+    
+    gsp.LoopLabelPtr += 1;
+    gsp.ReturnStack.push(li);
+    gsp.ReturnStack.push(rLoc);
+});
+
+Compiler.method("doPlusLoop", function (gsp) {
+  //  gsp.MinArgsSwitch = false;
+    var incVal = gsp.DataStack.pop();
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
+    var paramField = currWord.ParamField;
+    var rLoc = gsp.ReturnStack.pop();
+    var li = gsp.ReturnStack.pop();
+    var jumpAddr = paramField[rLoc.ParamFieldAddr];
+    var loopLimit = li.Limit;
+    var loopLabel = li.Label;
+    var currIndex = li.Index;
+
+    if (incVal < 0) {
+       loopLimit += incVal;
+    }
+    else {
+       loopLimit -= incVal; 
+    }
+    if ( ( (Number(incVal) > 0) && (Number(currIndex) >= Number(loopLimit)) ) || 
+         ( (Number(incVal) < 0) && (Number(currIndex) <= Number(loopLimit)) )
+       ) {
+        gsp.ParamFieldPtr += 1;  
+        rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+        gsp.LoopLabelPtr -= 1;
+    }
+    else {
+        gsp.ParamFieldPtr = jumpAddr;
+        currIndex = Number(currIndex) + incVal;
+        li.Index = currIndex;
+        rLoc.ParamFieldAddr = gsp.ParamFieldPtr;
+        gsp.ReturnStack.push(li);
+    }
+    switch (loopLabel) {
+        case "I" : gsp.LoopCurrIndexes[0] = currIndex;
+            break;
+       case "J" : gsp.LoopCurrIndexes[1] = currIndex;
+            break;
+        case "K" : gsp.LoopCurrIndexes[2] = currIndex;
+            break;    
+    }
+    gsp.ReturnStack.push(rLoc);  
+  //  gsp.MinArgsSwitch = true;
+});
+
+Compiler.method("doArgsCheckOff", function (gsp) {
+    gsp.MinArgsSwitch = false;
+});
+
+Compiler.method("doArgsCheckOn", function (gsp) {
+    gsp.MinArgsSwitch = true;
+});
+
+Compiler.method("doLoop", function (gsp) {
+    gsp.DataStack.push(1);
+    var codeField = gsp.CreoleForthBundle["doPlusLoop.IMMEDIATE"].CodeField;
+    codeField(gsp);
+});
+
+Compiler.method("doIndexI", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[0]);
+});
+
+Compiler.method("doIndexJ", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[1]);
+});
+
+Compiler.method("doIndexK", function (gsp) {
+    gsp.DataStack.push(gsp.LoopCurrIndexes[2]);
+});
+
+// DOES> only works right now outside a compiled definition
 Compiler.method("doDoes", function (gsp) {
     var execToken = gsp.CreoleForthBundle.Address[gsp.InnerPtr].IndexField;
     gsp.ParamFieldPtr += 1;
     gsp.DataStack.push(execToken);
     gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
+});
+
+/*
+Compiler.method("doDoes", function (gsp) {   
+    var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr];
+    var execToken;
+    if (currWord.CodeField === cfb1.Modules.Compiler.doDoes) {
+        execToken = paramField[1];
+        gsp.ParamFieldPtr += 2;
+    }
+    else {
+        var rLoc = gsp.ReturnStack.pop();   
+        doesWordAddr = rLoc.DictAddr;
+        currParamFieldPtr = rLoc.ParamFieldAddr - 1;
+        execToken = doesWordAddr.paramField[currParamFieldPtr];
+        gsp.ParamFieldPtr =  currParamFieldPtr + 2;
+        gsp.ReturnStack.push(rLoc);
+    }
+ 
+    gsp.MinArgsSwitch = false;
+    gsp.CreoleForthBundle.Modules.Interpreter.doColon(gsp);
+    gsp.MinArgsSwitch = true;
 });
 
 // 1. Copy the code beyond DOES> into the defining word to the new definition
@@ -823,7 +930,6 @@ Compiler.method("CompileDoes", function (gsp) {
     var childCreoleWord = gsp.CreoleForthBundle.Address[newRow];
     var doesAddr = gsp.CreoleForthBundle["DOES>.FORTH"].IndexField;
     var i = 0;
-    var fqNameField = childCreoleWord.fqNameField;
     var startCopyPoint;
     
     childCreoleWord.CodeField = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
@@ -838,6 +944,9 @@ Compiler.method("CompileDoes", function (gsp) {
         }
     }
     
+    // Need the definition's address so doDoes can get it easily either when it's being
+    // called from the interpreter for from within a compiled definition
+    childCreoleWord.ParamField.push(newRow);
     i = 0;
     while (startCopyPoint < parentCreoleWord.ParamField.length) {
         childCreoleWord.ParamField.push(parentCreoleWord.ParamField[startCopyPoint]);
@@ -847,9 +956,10 @@ Compiler.method("CompileDoes", function (gsp) {
     
     rLoc.ParamFieldAddr += i;
     gsp.ReturnStack.push(rLoc);
-//    gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
-//    gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
+  //  gsp.CreoleForthBundle.Address[newRow] = childCreoleWord;
+ //   gsp.CreoleForthBundle[fqNameField] = childCreoleWord;
 });
+*/
 
 Compiler.method("doJump", function (gsp) {
     var currWord = gsp.CreoleForthBundle.Address[gsp.InnerPtr]; 
@@ -908,6 +1018,16 @@ Compiler.method("doSetCurrentToContext", function (gsp) {
     var currentVocab = gsp.VocabStack[gsp.VocabStack.length - 1];
     gsp.CurrentVocab = currentVocab;
     console.log("Current vocab is now " + gsp.CurrentVocab);
+});
+
+Compiler.method("doImmediate", function (gsp) {
+    var newRow = gsp.CreoleForthBundle.row;
+    var newCreoleWord = gsp.CreoleForthBundle.Address[newRow];
+    var fqName = newCreoleWord.fqNameField;
+    newCreoleWord.CompileAction = "EXECUTE";
+    newCreoleWord.Vocabulary = "IMMEDIATE";
+    gsp.CreoleForthBundle.Address[newRow] = newCreoleWord;
+    gsp.CreoleForthBundle[fqName] = newCreoleWord;
 });
 
 var LogicOps = function () {
@@ -1127,11 +1247,11 @@ CreoleForthBundle.method("BuildHighLevel", function(gsp, code, help) {
     var newDef;
     
     gsp.InputArea = code;
-    this.Modules.Interpreter.doParseInput(gsp);
+    this.Modules.Interpreter.doParseInput(gsp);   
     this.Modules.Interpreter.doOuter(gsp);
     newDef = this.Address[this.row];
     newDef.HelpField = help;
-    this[newDef.fqNameField] = newDef;    
+    this[newDef.fqNameField] = newDef; 
 });
 
 
@@ -1208,9 +1328,9 @@ cfb1.BuildPrimitive("OR", cfb1.Modules.LogicOps.doOr, "FORTH", "COMPINPF","( val
 cfb1.BuildPrimitive("XOR", cfb1.Modules.LogicOps.doXor, "FORTH", "COMPINPF","( val1 val2 -- flag ) -1 if one and only one argument is non-zero, 0 otherwise");
 
 // Compiler definitions
-cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "FORTH", "COMPINPF","( n --). Compiles value off the TOS into the next parameter field cell");
-cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "IMMEDIATE", "COMPINPF","( n --). It's does the same thing as , (comma) - given a different name for ease of reading");
-cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --). Executes the word corresponding to the address on the stack");
+cfb1.BuildPrimitive(",", cfb1.Modules.Compiler.doComma, "FORTH", "COMPINPF","( n --) Compiles value off the TOS into the next parameter field cell");
+cfb1.BuildPrimitive("COMPINPF", cfb1.Modules.Compiler.doComma, "IMMEDIATE", "COMPINPF","( n --) Does the same thing as , (comma) - given a different name for ease of reading");
+cfb1.BuildPrimitive("EXECUTE", cfb1.Modules.Compiler.doExecute, "FORTH", "COMPINPF","( address --) Executes the word corresponding to the address on the stack");
 cfb1.BuildPrimitive(":", cfb1.Modules.Compiler.CompileColon, "FORTH", "COMPINPF","( -- ) Starts compilation of a colon definition");
 cfb1.BuildPrimitive(";", cfb1.Modules.Compiler.doSemi, "IMMEDIATE", "EXECUTE","( -- ) Terminates compilation of a colon definition");
 cfb1.BuildPrimitive("COMPLIT", cfb1.Modules.Compiler.CompileLiteral, "IMMEDIATE", "EXECUTE","( -- ) Compiles doLit and a literal into the dictionary");
@@ -1223,26 +1343,40 @@ cfb1.BuildPrimitive("@", cfb1.Modules.Compiler.doFetch, "FORTH", "COMPINPF","( a
 cfb1.BuildPrimitive("!", cfb1.Modules.Compiler.doStore, "FORTH", "COMPINPF","( val addr --) Stores the value in the param field  at addr");
 cfb1.BuildPrimitive("DEFINITIONS", cfb1.Modules.Compiler.doSetCurrentToContext, "FORTH",
                     "COMPINPF","(  -- ). Sets the current (compilation) vocabulary to the context vocabulary (the one on top of the vocabulary stack)");
+cfb1.BuildPrimitive("IMMEDIATE", cfb1.Modules.Compiler.doImmediate, "FORTH", "COMPINPF","( -- ) Flags a word as immediate (executes instead of compiling inside a colon definition)");
 
 // Branching compiler definitions
-cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ). Compile-time code for IF which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("IF", cfb1.Modules.Compiler.CompileIf, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for IF");
+cfb1.BuildPrimitive("ELSE", cfb1.Modules.Compiler.CompileElse, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for ELSE");
+cfb1.BuildPrimitive("THEN", cfb1.Modules.Compiler.CompileThen, "IMMEDIATE", "EXECUTE","( -- location ) Compile-time code for THEN");
 cfb1.BuildPrimitive("0BRANCH", cfb1.Modules.Compiler.do0Branch, "IMMEDIATE", "NOP","( flag -- ) Run-time code for IF");
 cfb1.BuildPrimitive("JUMP", cfb1.Modules.Compiler.doJump, "IMMEDIATE", "NOP","( -- ) Jumps unconditionally to the parameter field location next to it and is compiled by ELSE");
 cfb1.BuildPrimitive("doElse", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for ELSE");
 cfb1.BuildPrimitive("doThen", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for THEN");
-cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "IMMEDIATE", "EXECUTE","( -- beginLoc ). Compile-time code for BEGIN which should not be used outside of a colon definition");
-cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL which should not be used outside of a colon definition");
+cfb1.BuildPrimitive("BEGIN", cfb1.Modules.Compiler.CompileBegin, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for BEGIN");
+cfb1.BuildPrimitive("UNTIL", cfb1.Modules.Compiler.CompileUntil, "IMMEDIATE", "EXECUTE","( beginLoc -- ) Compile-time code for UNTIL");
 cfb1.BuildPrimitive("doBegin", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "NOP","( -- ) Run-time code for BEGIN");
+cfb1.BuildPrimitive("DO", cfb1.Modules.Compiler.CompileDo, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for DO");
+cfb1.BuildPrimitive("LOOP", cfb1.Modules.Compiler.CompileLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for LOOP");
+cfb1.BuildPrimitive("+LOOP", cfb1.Modules.Compiler.CompilePlusLoop, "IMMEDIATE", "EXECUTE","( -- beginLoc ) Compile-time code for +LOOP");
+cfb1.BuildPrimitive("doStartDo", cfb1.Modules.Compiler.doStartDo, "IMMEDIATE", "COMPINPF","( start end -- ) Starts off the Do by getting the start and end");
+cfb1.BuildPrimitive("doDo", cfb1.Modules.CorePrims.doNOP, "IMMEDIATE", "COMPINPF","( -- ) Marker for DoLoop to return to");
+cfb1.BuildPrimitive("doLoop", cfb1.Modules.Compiler.doLoop, "IMMEDIATE", "COMPINPF","( -- ) Loops back to doDo until the start equals the end");
+cfb1.BuildPrimitive("doPlusLoop", cfb1.Modules.Compiler.doPlusLoop, "IMMEDIATE", "COMPINPF","( inc -- ) Loops back to doDo until the start >= the end and increments with inc");
+cfb1.BuildPrimitive("I", cfb1.Modules.Compiler.doIndexI, "FORTH", "COMPINPF","( -- index ) Rturns the index of I");
+cfb1.BuildPrimitive("J", cfb1.Modules.Compiler.doIndexJ, "FORTH", "COMPINPF","( -- index ) Rturns the index of J");
+cfb1.BuildPrimitive("K", cfb1.Modules.Compiler.doIndexK, "FORTH", "COMPINPF","( -- index ) Rturns the index of K");
+cfb1.BuildPrimitive("CHKOFF", cfb1.Modules.Compiler.doArgsCheckOff, "FORTH", "COMPINPF","( -- ) Turns check for stack args off");
+cfb1.BuildPrimitive("CHKON", cfb1.Modules.Compiler.doArgsCheckOn, "FORTH", "COMPINPF","( -- ) Turns check for stack args on");
 
-cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", "EXEC0","( -- ) Single-line comment handling");
-cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", "EXEC0","( -- ) Multiline comment handling");
-cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", "EXEC0","( -- list ) List compiler");
+cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Single-line comment handling");
+cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
+cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
+cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
+
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
 cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for simple scalar data storage and retrieval");
-
 // APPSPEC is a convenient vocabulary to group your application specific primitives in
-cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 gsp.CurrentVocab = "APPSPEC";
-cfb1.BuildHighLevel(gsp, ": HT HELLO TULIP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": DOTEST DO I LOOP ;", "Simple testing definition");
+cfb1.BuildHighLevel(gsp, ": TL2 CHKOFF DO I 3 0 DO J LOOP LOOP CHKON ;", "Simple testing definition 2");

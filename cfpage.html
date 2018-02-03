@@ -26,9 +26,7 @@
     font-size: 16px;
 }
     </style>
-    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
-    <!-- Change below to "PRODUCTION" when you're sure there are no more stack-based errors in the code -->
-    <script>var creoleForthCodeBase="DEVELOPMENT";</script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>  
     <script src="CreoleForth.js"></script>
     <script>
         var parseInput = function (input) {
@@ -38,8 +36,14 @@
 
         // puts textarea values onto the stack
         var parseStack = function (taval) {
+            var ds0 = [];
             var ds = [];
-            ds = taval.split("\n").reverse();
+            ds0 = taval.split("\n").reverse();
+            for (i = 0; i < ds0.length; i++) {
+                if (ds0[i].trim() != "") {
+                    ds.push(ds0[i]);
+                } 
+            }
             return ds;
         };
         

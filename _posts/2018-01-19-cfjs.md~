@@ -9,7 +9,7 @@ at it. So far, it's just a bunch of primitives in a single JavaScript file with 
 
 Some words implemented:
 <ol>
-<li>HELLO : pops up a message box saying "Hello World".</li>
+<li>HELLO - pops up a message box saying "Hello World".</li>
 <li>+ : Adds two numbers on the stack. Make sure they're on there first.</li>
 <li>-, *, /, % : other arithmetic operations. </li>
 <li>DUP - duplicates a stack argument.</li>
