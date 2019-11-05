@@ -65,6 +65,8 @@ var GlobalSimpleProps = function (cfb) {
     this.CompiledList = [];
     this.BFC = new BasicForthConstants();
     this.MinArgsSwitch = true;   // When true MinArgs is checked
+    this.pause = false;
+    this.onContinue = null
 };
 
 GlobalSimpleProps.method("cleanFields", function () {
@@ -82,6 +84,7 @@ GlobalSimpleProps.method("cleanFields", function () {
     this.HelpCommentField = "";
     this.SoundField = "";
     this.CompiledList = [];
+    this.pause = false;
 });
 
 
@@ -293,7 +296,7 @@ CorePrims.method("doDrop", function (gsp) {
 });
 
 CorePrims.method("doDepth", function (gsp) {
-    gsp.DataStack.push(gsp.DataStack.length - 1);
+    gsp.DataStack.push(gsp.DataStack.length);
 });
 
 CorePrims.method("doHello", function (gsp) {
@@ -461,6 +464,7 @@ Interpreter.method("doOuter", function (gsp) {
     gsp.ParamFieldPtr = 0;
     
     while (gsp.OuterPtr < gsp.ParsedInput.length) {
+        if (gsp.pause === false) {
         rawWord = gsp.ParsedInput[gsp.OuterPtr];
         searchVocabPtr = gsp.VocabStack.length - 1;
         while (searchVocabPtr >= 0) {
@@ -486,6 +490,7 @@ Interpreter.method("doOuter", function (gsp) {
         }
         gsp.OuterPtr += 1;  
         isFound = false;
+        }
     }  
 });
 
@@ -1197,21 +1202,42 @@ var AppSpec = function () {
     this.title = "Application-specific grouping";
 };
 
-var func1 = function () {
-    var description = "ID function test";
-};
-
-var func2 = function () {
-    var description = "ID function test";
-};
-
 AppSpec.method("doTest", function (gsp) {
-
+        /*
+    var sleep = function (time) {
+        return new Promise((resolve) => setTimeout(resolve, time));
+    }
+    sleep(3000).then(() => {
+        cfb1.Modules.CorePrims.doHello(gsp);
+    });
+    */
+     cfb1.Modules.CorePrims.doHello(gsp);
 });
 
 AppSpec.method("doBeep", function (gsp) {
     gsp.SoundField = '<embed src="beep-08b.mp3" autostart="false" width="0" height="0" id="sound1">';
 });
+
+AppSpec.method("doSleep", function (gsp) {
+   if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }    
+
+    var timeout = gsp.DataStack.pop();
+    timeout *= 1000000;
+/*    gsp.pause = true;
+
+    setTimeout(function () {
+        gsp.pause = false;
+        gsp.onContinue();
+    }, timeout);
+    */
+    var x = 0;
+    while (x < timeout) {
+        x += 1;       
+    }
+});
+
 
 var CreoleWord =
     function (NameField, CodeField, CodeFieldStr, Vocabulary, CompileActionField, HelpField,
@@ -1399,6 +1425,7 @@ cfb1.BuildPrimitive("\\", cfb1.Modules.Compiler.doSingleLineCmts, "Compiler.doSi
 cfb1.BuildPrimitive("(", cfb1.Modules.Compiler.doParenCmts, "Compiler.doParenCmts", "FORTH", gsp.BFC.ExecZeroAction,"( -- ) Multiline comment handling");
 cfb1.BuildPrimitive("\{", cfb1.Modules.Compiler.doCompileList, "Compiler.doCompileList", "FORTH", gsp.BFC.ExecZeroAction,"( -- list ) List compiler");
 cfb1.BuildPrimitive("BEEP", cfb1.Modules.AppSpec.doBeep, "AppSpec.doBeep", "APPSPEC", "COMPINPF","( -- ) Plays short beeping sound");
+cfb1.BuildPrimitive("SLEEP", cfb1.Modules.AppSpec.doSleep, "AppSpec.doSleep", "APPSPEC", "COMPINPF","( n -- ) Sleeps n milliseconds");
 cfb1.BuildPrimitive("TEST", cfb1.Modules.AppSpec.doTest, "AppSpec.doTest", "APPSPEC", "COMPINPF","( -- ) Do what you like here");
 
 cfb1.BuildHighLevel(gsp, ": CONSTANT CREATE , DOES> @ ;", "( val -- ) CONSTANT <name>. Defining word for scalar constants");
