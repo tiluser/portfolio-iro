@@ -313,7 +313,7 @@ CorePrims.method("doMsgBox", function (gsp) {
 });
 
 CorePrims.method("doEval", function (gsp) {
-    var jsCode = gsp.DataStack.pop();
+    var jsCode = gsp.DataStack.pop().replace(/^\s+/, "");
     if (jsCode.search(/^alert/) === -1) {
         alert("Sorry, only alerts allowed");
     }
@@ -541,6 +541,7 @@ Compiler.method("doCompileList", function (gsp) {
     
     joinedList = gsp.CompiledList.join(" ");
     gsp.DataStack.push(joinedList);
+    // gsp.OuterPtr += 1;
 });
 
 // Executes at time one of colon compilation, then the information in the CompileInfo triplets are
@@ -947,7 +948,7 @@ Compiler.method("CompileDoes", function (gsp) {
     var startCopyPoint;
     
     childCreoleWord.CodeField = gsp.CreoleForthBundle.Modules.Compiler.doDoes;
-    childCreoleWord.CodeFieldStr = "doDoes";
+    childCreoleWord.CodeFieldStr = "Compiler.doDoes";
     // Find the location of the does address in the parent definition
     while (i < parentCreoleWord.ParamField.length) {
         if (parentCreoleWord.ParamField[i] == doesAddr) {
@@ -1238,6 +1239,167 @@ AppSpec.method("doSleep", function (gsp) {
     }
 });
 
+var eratosthenes = function(n) {
+    // Eratosthenes algorithm to find all primes under n
+    var array = [], upperLimit = Math.sqrt(n), output = [];
+
+    // Make an array from 2 to (n - 1)
+    for (var i = 0; i < n; i++) {
+        array.push(true);
+    }
+
+    // Remove multiples of primes starting from 2, 3, 5,...
+    for (var i = 2; i <= upperLimit; i++) {
+        if (array[i]) {
+            for (var j = i * i; j < n; j += i) {
+                array[j] = false;
+            }
+        }
+    }
+    
+    for (var i = 2; i < n; i++) {
+        if(array[i]) {
+            output.push(i);
+        }
+    }
+    return output;
+}
+
+// ( n -- primes ) Prime number sieve
+AppSpec.method("doPrimes", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }    
+    var n = gsp.DataStack.pop();
+    var primes = eratosthenes(n);
+    gsp.DataStack.push(primes);
+});
+
+var findNearest4Multiple = function(n) {
+    var floored_val = Math.floor(n / 4) * 4;
+    var floored_val_diff = Math.abs(floored_val - n);
+    var ceil_val = Math.ceil(n / 4) * 4;
+    var ceil_val_diff = Math.abs(ceil_val - n);
+    return (floored_val_diff < ceil_val_diff) ? floored_val : ceil_val;
+};
+
+// ( primes -- pi ) Computes pi via Leibnitz formula
+AppSpec.method("doLeibnitz", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    }    
+    var primes = gsp.DataStack.pop();
+    primes.shift(); // remove 2 from computation
+    var four_factors = []
+    var disp_array = [];
+    var temp = 0;
+    var pi_over_4; 
+    for (var i = 0; i < primes.length; i++) {
+        four_factors.push(findNearest4Multiple(primes[i]));
+        temp = primes[i] / findNearest4Multiple(primes[i]) ;
+      //  gsp.DataStack.push(primes[i] + "/" + findNearest4Multiple(primes[i]));
+        if (i === 0) {
+            pi_over_4 = temp;
+        }  
+        else {
+            pi_over_4 *= temp;
+        }
+    }
+    var pi = pi_over_4 * 4;
+    gsp.DataStack.push(pi);
+});
+
+
+var sFact = function (num)
+{
+    var rval=1;
+    for (var i = 2; i <= num; i++)
+        rval = rval * i;
+    return rval;
+};
+
+// ( n -- pi ) Computes pi via Ramanujan's first formula (1914)
+AppSpec.method("doRamanujan1", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    } 
+    var n = gsp.DataStack.pop();
+    var numval1 = Math.sqrt(8) / Math.pow(99, 2);
+    var numval2 = 1103;
+    var numval3 = 26390;
+    var numval4 = 99;
+
+    var accumulator = 0; 
+    var temp = 0;
+    for (var i = 0; i < n; i++) {
+        var piece1 = sFact(4 * n); 
+        var piece2 = numval2 + (numval3 * n);
+        var piece3a = Math.pow(4, n) * sFact(n);
+        var piece3 = Math.pow(piece3a, 4);
+        var piece4 = Math.pow(numval4, 4 * n);
+        temp = (piece1 * piece2) / (piece3 * piece4);
+        accumulator += temp;
+    }
+    var pi = 1 / (numval1 * accumulator);
+    gsp.DataStack.push(pi);
+});
+
+// ( -- pi ) Lazy approximate method of calculating PI
+AppSpec.method("doLazyPi", function (gsp) {
+    var pi = 355 / 113;
+    gsp.DataStack.push(pi);
+});
+
+// ( -- pi ) PI directly from the JavaScript constant PI
+AppSpec.method("doCanonicalPi", function (gsp) {
+    gsp.DataStack.push(Math.PI);
+});
+
+var triplets = [];
+
+// ( -- ) Computes next Nilakantha denominator triplet and puts it in a global JavaScript array
+AppSpec.method("doDenominatorTriplet", function (gsp) {
+    var newFlagTriplet = [];
+    var lastTripletMember = 2;
+ //   alert("In denom triplet code")
+    if (triplets.length > 0) {
+        lastTripletMember = triplets[triplets.length - 1];
+    }  
+    triplets.push(lastTripletMember);
+    triplets.push(lastTripletMember + 1);
+    triplets.push(lastTripletMember + 2);
+});
+
+var nilakTerms = [];
+                
+// (  n -- ) computes nth Nilakantha term. n starts from 0.
+AppSpec.method("doNextNilakanthaTerm", function (gsp) {
+    if (gsp.hasMinArgs(gsp.DataStack, 1) === false) { 
+        return;
+    } 
+    var n = gsp.DataStack.pop();
+    var firstIndex = n * 3 ;
+    var nilakTerm = 4 / ( triplets[firstIndex] * triplets[firstIndex + 1] * triplets[firstIndex + 2]);
+    nilakTerms.push(nilakTerm);
+});
+
+// ( -- pi ) computes PI by adding pre-computed Nilakantha terms
+AppSpec.method("doAccumulateNilakanthaTerms", function (gsp) {
+    var accumVal = 3
+    for (var i =0; i < nilakTerms.length; i++) {
+        if (i % 2 === 0)
+        {
+            accumVal += nilakTerms[i];
+        }
+        else {
+            accumVal -= nilakTerms[i];
+        }
+    }
+    gsp.DataStack.push(accumVal);
+    // Once calculation is complete, clear the arrays for the next try
+    triplets = [];
+    nilakTerms = [];
+});
 
 var CreoleWord =
     function (NameField, CodeField, CodeFieldStr, Vocabulary, CompileActionField, HelpField,
@@ -1434,3 +1596,26 @@ cfb1.BuildHighLevel(gsp, ": VARIABLE CREATE 0 , ;", "VARIABLE <name>. Used for s
 gsp.CurrentVocab = "APPSPEC";
 cfb1.BuildHighLevel(gsp, ": DOTEST DO HELLO LOOP ;", "Simple testing definition");
 cfb1.BuildHighLevel(gsp, ": TL2 CHKOFF DO I 3 0 DO J LOOP LOOP CHKON ;", "Simple testing definition 2");
+cfb1.BuildPrimitive("PRIMES", cfb1.Modules.AppSpec.doPrimes, "AppSpec.doPrimes", "APPSPEC", "COMPINPF","( n -- primes ) Prime number sieve");
+cfb1.BuildPrimitive("LEIBNITZ", cfb1.Modules.AppSpec.doLeibnitz, "AppSpec.doLeibnitz", "APPSPEC", "COMPINPF","( primes -- pi )  Computes pi via Leibnitz formula");
+// cfb1.BuildPrimitive("RAMANUJAN1", cfb1.Modules.AppSpec.doRamanujan1, "AppSpec.doRamanujan1", "APPSPEC", "COMPINPF","( n -- pi ) Computes pi via Ramanujan's first formula (1914)");
+cfb1.BuildPrimitive("LAZYPI", cfb1.Modules.AppSpec.doLazyPi, "AppSpec.doLazyPi", "APPSPEC", "COMPINPF","( -- pi ) Lazy approximate method of calculating PI");
+cfb1.BuildPrimitive("CANON_PI", cfb1.Modules.AppSpec.doCanonicalPi,"AppSpec.doCanonicalPi" ,"APPSPEC", "COMPINPF","( -- pi ) PI directly from the JavaScript constant PI");
+cfb1.BuildPrimitive("DTRIPLET", cfb1.Modules.AppSpec.doDenominatorTriplet,"AppSpec.doDenominatorTriplet" ,"APPSPEC", "COMPINPF",
+                    "( -- ) Computes next Nilakantha denominator triplet and puts it in a global JavaScript array");
+cfb1.BuildPrimitive("NEXT_NILAK_TERM", cfb1.Modules.AppSpec.doNextNilakanthaTerm,"AppSpec.doNextNilakanthaTerm" ,"APPSPEC", "COMPINPF",
+                    "(  n -- ) computes nth Nilakantha term. n starts from 0."); 
+cfb1.BuildPrimitive("ACC_NILAK_TERMS", cfb1.Modules.AppSpec.doAccumulateNilakanthaTerms,"AppSpec.doAccumulateNilakanthaTerms" ,"APPSPEC", "COMPINPF",
+                    "( -- pi ) computes PI by adding pre-computed Nilakantha terms"); 
+cfb1.BuildHighLevel(gsp, ": HL_LAZYPI 355 113 / ;", "( -- N ) High-level version of LAZYPI");
+cfb1.BuildHighLevel(gsp, ": CPI CANON_PI MSGBOX ;", "( -- ) Canonical PI with a message box");                 
+/*
+cfb1.BuildHighLevel(gsp, "Done CONSTANT DONE", "");
+cfb1.BuildHighLevel(gsp, ": 2HELLO HELLO HELLO ;", "");
+cfb1.BuildHighLevel(gsp, ": 2TULIP TULIP TULIP ;", "");
+cfb1.BuildHighLevel(gsp, ": 2HT 2HELLO 2TULIP ;", "");
+*/
+cfb1.BuildHighLevel(gsp, ": DTRIPLETS 0 DO DTRIPLET LOOP HELLO ;", "( n -- ) Computes the triplets");
+cfb1.BuildHighLevel(gsp, ": NILAK_TERMS CHKOFF 0 DO I NEXT_NILAK_TERM LOOP CHKON ;", "( n -- ) Computes the individual Nilakantha terms"); 
+cfb1.BuildHighLevel(gsp, ": NILAK_PI DUP 0 CHKOFF DO DTRIPLET LOOP 0 DO I NEXT_NILAK_TERM LOOP ACC_NILAK_TERMS CHKON MSGBOX ;", "( n -- ) Computes PI via Nilakantha method");
+
